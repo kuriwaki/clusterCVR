@@ -1,0 +1,67 @@
+---
+title: "clusterCVR"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<!-- badges: start -->
+[![R build status](https://github.com/kuriwaki/cat-mixture/workflows/R-CMD-check/badge.svg)](https://github.com/kuriwaki/cat-mixture/actions)
+<!-- badges: end -->
+
+`clusterCVR` provides an EM Algorithm for Mixture Models of Votes with Varying Choice Sets. It is a clustering algorithm particularly designed for analyzing mid to high dimensional datasets when voters vote on Republican or Democratic candidates on the long ballot.
+
+### Loading
+
+```{r}
+library(clusterCVR)
+```
+
+
+# Derivation
+
+See [**cat-mixture.pdf**](cat-mixture.pdf) for the writeup of the model.  Source is [cat-mixture.tex](cat-mixture.tex)
+
+
+# Usage
+
+**No varying choice set**
+
+```{r}
+data("simdata_full")
+out_cl <- clusterCVR(simdata_full, init = "kmeans")
+
+summary(out_cl)
+```
+
+We can also check the log likelihood monotonically increasing:
+```{r}
+pars <- summ_params(out_cl)
+graph_trend(pars, simdata_full)
+```
+
+
+<!-- # Related Packages -->
+
+<!-- Many finite mixture models exist, but almost all are limited to continuous outcomes via Gaussian mixutre models.  The folowing table comes from the `mclust` package R Journal [vignette](https://journal.r-project.org/archive/2016/RJ-2016-021/RJ-2016-021.pdf):  -->
+
+<!-- ```{r, echo = FALSE, out.width = "70%"} -->
+<!-- knitr::include_graphics("README-images/mclust-table.png") -->
+<!-- ``` -->
+
+
+<!-- `mclust` is the most downloaded package, with `Rmixmod` coming in second.  [Rmixmod](https://www.jstatsoft.org/article/view/v067i06) is the only package of these that has a interface for analyzing categorical (what they call "qualitative") outcome data. It was recently updated on CRAN (May 2020), and is based on a broader computational library, [MixMod](http://www.mixmod.org/). Here is how it works. -->
+
+
+
+```{r, eval = FALSE, include = FALSE}
+library(Rmixmod)
+data(birds)
+head(birds) # data where all variables are factor
+
+out_mm <- mixmodCluster(data = birds, nbCluster = 3)
+summary(out_mm)
+```
+

@@ -1,0 +1,507 @@
+\documentclass[11pt]{article}
+\usepackage{sk_memo}
+
+% Parmaters --
+\title{\Large\textbf{An EM Algorithm for Clustering Voter Types}}
+\author{\normalsize  Shiro Kuriwaki\thanks{Ph.D. Candidate, Department of Government and Institute of Quantitative Social Science, Harvard University. Thanks to Shusei Eshima, Max Goplerud, Sooahn Shin, for their help. Thanks especially to Soichiro Yamauchi for his extensive help, including the suggestion of EM and deriving the original iteration of this algorithm for me.}}
+
+\date{\normalsize June 2020}
+
+
+\begin{document}
+\maketitle
+
+
+
+\begin{center}
+\renewcommand*\contentsname{}
+\begin{minipage}{0.8\linewidth}
+\tableofcontents
+\end{minipage}
+\end{center}
+
+\onehalfspacing
+
+\newpage
+
+\section{Data Generating Process}
+
+
+\subsection{Setup}
+
+Index individuals by \(i \in \{1, ..., N\}\) and the universe of races
+excluding the top of the ticket as \(j \in \{1, ..., J\}\). The data we
+observe is \(N\) sets of  length-\(J\) vector of votes for voter \(i\), \(\bY_i\). \(Y_{ij}\) is a categorical response value, \(Y_{ij} \in \{0, ..., L\}\).
+
+\(Y_{ij}\) is recoded with respect to the top of the ticket. In the simplest case \(L = 1\), \(Y_{ij}\) is an indicator for a split ticket. \(Y_{ij} = 1\) would mean voter \(i\) splitting their ticket in some office \(j\), with reference to a top of the ticket office like the President or Governor. In the case of \(L = 2\), which will be our default setting, we can consider three outcomes: \(Y_{ij} = 0\) indicates \emph{abstention}, \(Y_{ij} = 1\) indicates ticket \emph{splitting} and \(Y_{ij} = 2\) indicates \emph{straight} (co-party) voting.
+
+
+\subsection{Parameters}
+
+
+There are two sets of parameters: \(\bmu\), the propensity for a given outcome for a given type of voter in a given office; and \(\bpi\), the mixing proportions of each type.  Individuals are endowed with a cluster (or type) \(k \in \{1, ..., K\}\), which is drawn from a distribution governed by length-\(K\) simplex \(\bpi\) (the mixing proportion).
+\begin{align*}
+Z_i \sim  \text{Cat}(\bpi),
+\end{align*}
+Here \(\bpi\) is the same for every individual, indicating that before we observe outcomes, everyone has the same probabilty of being in a particular cluster. We later incorporate demographic covariates that changes the prior probability. In the code, therefore, we deal with the \(N \times K\) matrix instead of a vector.
+
+
+
+Let \(\mu_{kj\ell} \in [0, 1]\) be the probability parameter that governs the probability of a given outcome for a given office, by a given type of voter. That is, \(\bmu\) is a \(\{K \times J \times (L + 1)\}\) array, where
+ \[\pr{Y_{ij} = \ell \mid Z_i = k} = \mu_{kj\ell}.\]
+
+In other words, for each individual (who is  type \(k\)), their observed vector \(\bY_{i}\) is governed by a length-\(J\) parameter \(\bmu_{k}\). Therefore, we can express the joint density as follows.
+\begin{align}
+\pr{\bY_{i} \mid Z_{i} = k, \bpi} = \prod^{J}_{j = 1} \text{Cat}(Y_{ij} | \bmu_k) = \prod^{J}_{j = 1}\prod^{L}_{\ell=0} \mu_{kj\ell}^{\ind{Y_{ij} = \ell}}
+\end{align}
+The loop over \(\ell\) simply represents the categorical distribution. In the binary case of \(L = 1\), the Categorical reduces to a Bernoulli:
+\begin{align}
+\pr{\bY_{i} \mid Z_{i} = k, \bpi} = \prod^{J}_{j=1}\mu_{kj}^{Y_{ij}}(1 - \mu_{kj})^{1- Y_{ij}}\nonumber
+\end{align}
+
+
+\section{Clustering as an Unobserved Variable Problem: EM}
+
+The common way to estimate mixture models is by using \(K\)-means, an iterative but deterministic algorithm. The usual MCMC sampler cannot reliably estimate clustering models like this one because of label-switching and multimodality. Moreover, the majority of existing clustering methods are dealt to model continuous or binary outcomes.
+
+Instead, here I derive an Expectation Maximization (EM) algorithm, which is probabilistic and guaranteed to recover the (local) maximum likelihood estimates of the target parameters. Unlike off-the-shelf algorithms, this can handle extensions such as discrete and unordered multinomial outcomes, systematic missing data, and covariates. The rest of this paper outlines the EM algorithm.
+
+
+
+\subsection{Complete Likelihood} If we knew the cluster assignment, we would be able to write the complete log-likelihood (\(\mathcal{L}_{\text{comp}}\)). First start with the joint probability of the outcome data and the cluster assignment:
+\begin{align}
+\Pr(\bY, \bZ \mid \bmu, \bpi) &= \Pr(\bY \mid \bZ, \bmu, \bpi)\Pr(\bZ \mid \bpi)\nonumber\\
+&= \prod^{N}_{i=1}\prod^{J}_{j=1}\Pr(Y_{ij} \mid \bZ, \bmu) \prod^N_{i=1}\Pr(Z_i \mid \bpi)\nonumber\\
+&= \prod^{N}_{i=1}\prod^{J}_{j=1}\prod^{K}_{k=1}\left\{\prod^{L}_{\ell=0}\pr{Y_{ij} = \ell | Z_i = k}^{\ind{Y_{ij} = \ell}}\right\}^{\ind{Z_i=k}} \prod^N_{i=1}\prod^K_{k=1}\pr{Z_i = {k} \mid \bpi}^{\ind{Z_i = k}}\nonumber
+\end{align}
+Therefore, the complete log-likelihood is:
+\begin{align}
+\mathcal{L}_{\text{comp}}(\bmu, \bpi|\bY, \bZ)
+& = \sum^{N}_{i=1}\sum^{J}_{j=1}\sum^{K}_{k=1}\sum^{L}_{\ell = 0}
+\bm{1}\{Y_{ij} = \ell, Z_{i} = k\}
+\log \Pr(Y_{ij} = \ell | Z_{i} = k, \bm{\mu})\nonumber\\
+& \qquad +
+\sum^N_{i=1}\sum^{K}_{k=1}\bm{1}\{Z_{i} = k\}\log \Pr(Z_{i} = k | \bm{\pi}) \label{eq:complik}
+\end{align}
+
+To derive the EM algorithm, we first take expectations over the \emph{posterior distribution} of the latent variable $Z_{i}$, therefore conditioning on the data and the initial parameter values:
+
+\begin{align}
+\E{\mathcal{L}_{\text{comp}}}
+& = \sum^{N}_{i=1}\sum^{J}_{j=1}\sum^{K}_{k=1}\sum^{L}_{\ell = 0}
+\ind{Y_{ij} = \ell} \E{\ind{Z_{i} = k}| \bY_i, \bpi, \bmu}
+\underbrace{\log \Pr(Y_{ij} = \ell | Z_{i} = k, \bm{\mu})}_{\equiv \log{\mu}_{kj\ell}}
+\nonumber\\
+& \qquad +
+\sum^{N}_{i=1}\sum^{K}_{k=1}\E{\ind{Z_{i} = k} | \bY_i, \bpi, \bmu}\underbrace{\log \Pr(Z_{i} = k | \bm{\pi})}_{= \log {\pi}_{k}} \label{eq:Elik}\\
+& = \sum^{N}_{i=1}\sum^{J}_{j=1}\sum^{K}_{k=1}\sum^{L}_{\ell = 0}\ind{Y_{ij} = \ell}\zeta_{ik}\log \mu_{kj\ell}
+\nonumber + \sum^{N}_{i=1}\sum^{K}_{k=1}\zeta_{ik}\log\pi_k
+\end{align}
+
+where we represent the new unknown quantity in equation \ref{eq:Elik} as
+\[\zeta_{ik} \equiv \E{\ind{Z_i = k} \mid \bY_i, \bpi, \bmu}.\]
+
+
+
+
+Going from \ref{eq:complik} to \ref{eq:Elik} takes this form because in the second component of the sum, by the definition of expectation of a function of a discrete r.v.,
+\begin{align*}
+\mathds{E}_{Z_i \sim p(Z_i | \bY_i, \bpi, \bmu)}\left[\ind{Z_i = k}\right] &=  \sum^K_{z^\prime=1}\Pr(Z_i = z^\prime \mid \bY_i, \bpi, \bmu) \ind{z_i^\prime = k}\\
+&= \Pr(Z_i = k \mid \bY_i, \bpi, \bmu)
+\end{align*}
+\noindent where we get the last line because this is an expectation on a function of \(Z_i\) so we must go through each \(z^\prime\) by plugging in all the potential values into \(Z_i\). Only when \(z^\prime = k\) will \(\ind{Z_i = k} = 1\), so we can simply reduce the sum to that case.
+
+\subsection{EM Implementation} 
+
+
+The E-step in the algorithm is to compute this posterior membership probability. We can see that this should be proportional to the likelihood of observing the voting pattern we do see, with weights for the mixing proportion:
+\begin{align}
+\widehat{\zeta}_{ik} \propto \pi_k\prod^D_{j = 1}\underbrace{\prod^{L}_{\ell = 0}\left(\mu_{kj\ell}\right)^{\ind{Y_{ij} = \ell}}}_{\equiv \bmu_{kj, Y_{ij}}}
+\end{align}
+This is true because the posterior probability is the prior of the cluster multiplied by the likelihood of the data given the parameter under that cluster. i.e. by Bayes rule,
+\begin{align*}
+\zeta_{ik} &= \E{\ind{Z_i = k} | \bY_i, \bpi, \bmu}\\
+&= \Pr(Z_i = k | \bY_i, \bpi, \bmu)\\
+&\propto \Pr(Z_i = k | \bpi, \bmu)p(\bY_i | Z_i = k, \bpi, \bmu)\\
+&= \pi_k \prod^J_{j =1}\prod^{L}_{\ell = 0}(\mu_{kj\ell})^{\ind{Y_{ij} = \ell}}.
+\end{align*}
+
+The M-step is derived by taking the derivatives of \(\E{\mathcal{L}_{\text{comp}}}\) with respect to the model parameters \(\bmu\) and \(\bpi\). This leads to a MLE-like M-step, which is shown in the next section (derivation in Appendix \ref{sec:EM-deriv_nomissing}), and the results are shown here.
+
+\paragraph{E-step} For each voter \(i\), compute the probability that they belong in cluster \(k\):
+\begin{align}
+\zeta_{ik} \leftarrow \frac{\bm{\pi}_{k}\prod^{J}_{j=1}\bm{\mu}_{kj,Y_{ij}}}
+{\sum^{K}_{k^\prime=1}\bm{\pi}_{k^\prime}\prod^{J}_{j=1}\bm{\mu}_{k^\prime j,Y_{ij}}}
+\end{align}
+
+\paragraph{M-step} Given those type probabilities, we update the parameters in the M-step. That will show that for updating \(\pi_k\), we should take the simple average of \(\widehat\zeta_{ik}\) across all \(i\). For updating \(\widehat\mu_{kj\ell}\), we should take for each \(k\) and \(\ell\) the sample proportion of the occurrence of \(Y_{ij} = \ell\), but weighted by \(\widehat\zeta_{ik}\):
+\begin{align}
+\text{for each \(k\), update: }~~~  \widehat{\pi}_{k} &\leftarrow \frac{1}{N}\sum^N_{i = 1}\widehat{\zeta}_{ik} \\
+\text{for each \(k, j, \ell\), update: }~~~ \widehat{\mu}_{kj\ell} &\leftarrow\frac{\sum^N_{i=1}\ind{Y_{ij} = \ell}\widehat{\zeta}_{ik}}{\sum^{N}_{i=1}\widehat{\zeta}_{ik}},
+\end{align}
+repeated  until convergence.
+
+We also need to set initial values for \(\bmu\) and \(\bpi\). I do this by letting \(\bpi^{(0)} = \left(\frac{1}{K},...\frac{1}{K}\right)\), randomly assigning an initial cluster assignment \(Z_i^\prime \sim \text{Cat}(\bpi^{(0)})\), and setting the initial \(\bmu\) by the sample means of the data within those initial assignments, \(\mu_{kj}^{(0)} = \frac{\sum_{i=1}^{N}\ind{Y_{ij} = 1}\ind{Z_{i}^{\prime} = k}}{\sum_{i=1}^{N}\ind{Z_{i}^{\prime} = k}}.\)
+
+
+\subsection{Evaluating Convergence}
+
+We evaluate convergence by the observed log likelihood,
+
+\begin{align*}
+\mathbf{L}_{\text{obs}} = \prod^N_{i=1}\sum^{K}_{k=1}\pi_k \prod^{J}_{j=1}\bm{\mu}_{kj,Y_{ij}}
+\end{align*}
+So the observed log-likelihood is
+\begin{align}
+\mathcal{L}_{\text{obs}} = \sum^{N}_{i=1}\log \left\{\sum^{K}_{k=1}\pi_k \prod^{J}_{j=1}\bm{\mu}_{kj,Y_{ij}}\right\} = \sum^{N}_{i=1}\log \left\{\sum^{K}_{k=1}\pi_k \prod^{J}_{j=1}\prod^{L}_{\ell = 0}\left(\mu_{kj\ell}\right)^{\ind{Y_{ij} = \ell}}\right\} \label{eq:obsloglik}
+\end{align}
+
+At each iteration, I check the relative change in the observed log likelihood (\(|\mathcal{L}_{\text{obs}}^{(t)} - \mathcal{L}_{\text{obs}}^{(t - 1)}| / |\mathcal{L}_{\text{obs}}^{(t - 1)}|\)) and declare convergence once that is smaller than a small threshold (e.g. \(10^{-5}\)).
+
+Calculating eq. \ref{eq:obsloglik} is computationally intensive, so a quick way to check convergence is to track the maximum of the change in parameters which are all on the probability scale, i.e. \(\max\left\{|\widehat\pi^{(t + 1)}_{1} - \widehat\pi^{(t)}_{1}|, ..., |\widehat\mu^{(t + 1)}_{K,J} - \widehat\mu^{(t)}_{K,J}|\right\}\)
+
+\section{Speed-Up by Collapsing to Unique Profiles}
+
+Because this EM algorithm deals with discrete data, the algorithm needs only sufficient statistics. In our setting the unique number of voting profiles is much smaller than the number of observations, because vote vectors follow a systematic pattern and most votes are straight-ticket votes. Therefore, we can re-format the dataset so that each row is a unique combination.
+
+This is only the case when there are no demographic covariates --- When we allow for demographic covariates that vary at the individual level, this no longer holds.
+
+Let \(u \in \{1, ..., U\}\) index the unique voting profiles, and \(n_{u}\) be the number of such profiles in the data.  We re-cycle the objects \(\bY\) and \(\bm\zeta\) so that each row indexes profiles rather than voters.
+
+We repeat the EM algorithm described earlier. For each profile \(u\), compute the probability that it belong in type \(k\):
+
+\begin{align}
+\text{for each \(u, k\), update: }~~~   \widehat\zeta_{uk} \leftarrow \frac{\bm{\pi}_{k}\prod^{J}_{j=1}\bm{\mu}_{kj,Y_{uj}}}
+{\sum^{K}_{k^\prime=1}\bm{\pi}_{k^\prime}\prod^{J}_{j=1}\bm{\mu}_{k^\prime j,Y_{uj}}}
+\end{align}
+
+Then given those type probabilities, update with
+
+\begin{align}
+\text{for each \(k\), update: }~~~   \widehat{\pi}_{k} &\leftarrow \frac{1}{N}\sum^U_{u = 1}n_{u}\widehat{\zeta}_{uk}\label{eq:Mstep_theta}\\
+\text{for each \(k, j, \ell\), update: }~~~   \widehat{\mu}_{kj\ell} &\leftarrow\frac{\sum^U_{u=1}n_{u}\ind{Y_{uj} = \ell}\widehat{\zeta}_{uk}}{\sum^{U}_{u=1}n_{u}\widehat{\zeta}_{uk}}\label{eq:Mstep_mu}\\
+\end{align}
+
+And the observed log-likelihood will also only require looping through the profiles:
+\begin{align}
+\mathcal{L}_{\text{obs}} &= \sum^{U}_{u=1}\log n_u + \sum^{U}_{u=1}\log\left\{\sum^{K}_{k=1}\pi_k \prod^{J}_{j=1}\bm{\mu}_{kj,Y_{ij}}\right\}
+\end{align}
+
+
+
+\section{Modeling Uncontested Races}
+
+A majority of elections for state and local offices are uncontested, which means that a voter technically votes in a choice but does not have the option to vote for one of the candidates. These qualitatively different settings require us to model \emph{varying choice sets}.
+
+\subsection{Categories of uncontestedness}
+
+In uncontested races, some options are not available to choose from. To show this, we introduce a new layer, following the notation in Yamamoto (2014):\footnote{Yamamoto, Teppei. 2014. \href{http://web.mit.edu/teppei/www/research/dchoice.pdf}{A Multinomial Response Model for Varying Choice Sets, with Application to Partially Contested Multiparty Elections.}} voter \(i\) for a given office \(j\) is in one of three settings, denoted by \(M_{ij} \in \{1, 2, 3\}\). Unlike the cluster \(Z_i\), that status is exactly observed in the data.
+
+Denote \(M_{ij} = 3\) to mean vote \(j\) for voter \(i\) falls in the \emph{contested} case, so the voter has all three options on the ``menu''. Denote \(M_{ij} = 2\) as the case when only the \emph{preferred party's} candidate is in the contest, so the voter only has options \(Y_{ij} \in \{0, 2\}\). Finally denote \(M_{ij} = 1\) as the case when only the \emph{opposed party's} candidate is in the contest, so the voter only has the option to abstain or reluctantly (perhaps) vote for the less favored option by splitting: \(Y_{i} \in \{0, 1\}\). For shorthand, I use the notation \(\bm{S}_{m}\) for the set of possible of values of \(Y_{ij}\) allowed for a given category of contestedness:
+\begin{align*}
+S_{m} = \begin{cases}
+\{0, 1\} & \text{~if~} m = 1\\
+\{0, 2\}  & \text{~if~} m = 2\\
+\{0, 1, 2\} & \text{~if~} m = 3\\
+\end{cases}
+\end{align*}
+
+Therefore the complete likelihood is modified by replacing the loop \(\ell = \{0, ..., L\}\) to \(\ell \in S_m\).
+
+
+\subsection{Shared Parameters across Varying Choice Sets}
+
+
+To express the choice probability for option \(\ell\) for office \(j\) among voters of type \(k\), let us introduce another parameter \(\bps\) which represents the intensity of preference for option \(\ell \in \{1, 2\}\) relative to \(\ell = 0\) (abstention). We set the baseline for abstention to be 0, i.e. \(\psi_{kj,(\ell=0)} = 0 ~\forall~ k, j\).
+
+In the simplest case where clusters are completely homogenous, we paramterize our main variable of interest \(\bmu\) as follows, while remembering that each individual is a member of type (\(Z_i\)) and each separate office is also of a missingness type \(M_{ij}\).
+\begin{align}
+\mu_{kj\ell} &= \frac{1}{N\pi_k}\sum^N_{i = 1}\ind{Z_i = k, M_{ij}= m}\frac{\exp{(\psi_{kj\ell})}}{\sum_{\ell^\prime \in \bm{S}_{m}}\exp{(\psi_{kj\ell^\prime})}}\label{eq:missing}
+\end{align}
+
+\paragraph{Analog to Multinomial Logit} Because \(\exp(\psi_{kj\ell}) = 1\) for \(\ell = 0\), which exists in all three components, each component is analogous to a simple multinomial logit. In the first two cases, since we consider only two possibilities, it reduces to a simple intercept-only logit. Also notice that we use the same set of parameters \(\bps_{kj}\) regardless of \(M_{ij}\). This represents the well-known independence of irrelevant alternatives (IIA) assumption in multinomial logit. The choice probabilities when one option is not on the ``menu'' is assumed to follow the same type of decision rule as the ratio between the existing options.
+
+\subsection{EM Estimation of Varying Choice Sets}
+
+\paragraph{M-step} We use this new representation of the parameter \(\mu\) in the EM algorithm, replacing the weighted average M-step for \(\mu\) with a weighted multinomial logit:
+\begin{align}
+\text{for each \(k\), update: }~~~  \widehat{\pi}_{k} &\leftarrow \frac{1}{N}\sum^N_{i = 1}\widehat{\zeta}_{ik} \label{eq:Mstep_IIA_theta} \\
+\text{for each \(k, j, \ell\), update: }~~~ \widehat{\mu}_{kj\ell} &\leftarrow  \frac{\exp\left(\widehat\psi_{kj\ell}\right)}{1 + \exp\left(\widehat\psi_{kj1}\right) + \exp\left(\widehat\psi_{kj2}\right)} \label{eq:Mstep_IIA_mu},
+\end{align}
+where the \(\bm\psi_{kj}\) vector is estimated from the coefficients of a multinomial logit, of the form
+\begin{align*}
+\texttt{mlogit(Y[[j]] \(\sim\) 1, data, weights = zeta\_k)}.
+\end{align*}
+
+In other words, for each \(k, j\), we estimate intercepts from regressing a vector of categorical votes for office \(\bY_{j}\), using the estimates of \(\bm{\zeta}_{k}\) as the weight \texttt{zeta\_k}. R packages of multinomial logit typically presume IIA if an outcome value is missing and implicitly do the kind of three-way subsetting as in equation \ref{eq:missing}. 
+
+
+
+\begin{comment}
+The required data would be of the ``long'' form shown in Table \ref{tab:choiceset}.
+
+\begin{table}[!h]
+\caption{How uncontested races affect choice sets \label{tab:choiceset}}
+\centering
+\singlespacing
+\small
+\begin{tabular}{cccccccc}
+\toprule
+\multicolumn{4}{c}{Voter level} & \multicolumn{2}{c}{Voter-office level} & \multicolumn{2}{c}{Choice}\\
+\cmidrule(lr){1-4} \cmidrule(lr){5-6}\cmidrule(lr){7-8}
+Voter     & \(\zeta_{i1}\) & \(\cdots\) & \(\zeta_{iK}\) &   Office & \(M_{ij}\) status & Option $\ell$ &  \(Y_{ij} = \ell\)\\\midrule
+\(i = 1\) & 0.12 & \(\cdots\) & 0.05 &  \(j = 1\) & 3 (contested) & 0 & \texttt{FALSE}\\
+\(i = 1\) & 0.12 & \(\cdots\) & 0.05 &  \(j = 1\) & 3 (contested) & 1 & \texttt{FALSE}\\
+\(i = 1\) & 0.12 & \(\cdots\) & 0.05 &  \(j = 1\) & 3 (contested) & 2 & \texttt{TRUE}\\\addlinespace
+\(i = 1\) & 0.12 & \(\cdots\) & 0.05 &  \(j = 2\) & 2 (cannot split) & 0 & \texttt{FALSE}\\
+\(i = 1\) & 0.12 & \(\cdots\) & 0.05 &  \(j = 2\) & 2 (cannot split) & 1 & \textcolor{crimson}{\texttt{NA}}\\
+\(i = 1\) & 0.12 & \(\cdots\) & 0.05 &  \(j = 2\) & 2 (cannot split) & 2 & \texttt{TRUE}\\\addlinespace
+\(i = 1\) & 0.12 & \(\cdots\) & 0.05 &  \(j = 3\) & 1 (cannot straight) & 0 & \texttt{FALSE}\\
+\(i = 1\) & 0.12 & \(\cdots\) & 0.05 &  \(j = 3\) & 1 (cannot straight) & 1 & \texttt{TRUE}\\
+\(i = 1\) & 0.12 & \(\cdots\) & 0.05 &  \(j = 3\) & 1 (cannot straight) & 2 & \textcolor{crimson}{\texttt{NA}}\\\addlinespace
+\(i = 2\) & 0.01 & \(\cdots\) & 0.80 &  \(j = 1\) & 1 (cannot straight) & 0 & \texttt{FALSE}\\
+\(i = 2\) & 0.01 & \(\cdots\) & 0.80 &  \(j = 1\) & 1 (cannot straight) & 1 & \texttt{FALSE}\\
+\(i = 2\) & 0.01 & \(\cdots\) & 0.80 &  \(j = 1\) & 1 (cannot straight) & 2 & \textcolor{crimson}{\texttt{NA}}\\
+\bottomrule
+\end{tabular}
+\end{table}
+\end{comment}
+
+\subsection{MLE for varying choice multinomial logit}
+
+We can also solve the mlogit with varying choice sets by MLE.
+
+We first introduce new notation \(m_{ij\ell} \in \{0, 1\}\), for whether option \(\ell\) is available for individual \(i\) in office \(j\). Clearly, therefore, \(m_{ij\ell}\) is a direct a mapping from \(M_{ij}\).
+
+\begin{align*}
+% m_{ij} = \begin{blockarray}{ccc}
+m_{ij\ell} = \begin{blockarray}{cccc}
+ & \ell = 0 & \ell = 1 & \ell = 2\\
+\begin{block}{c[ccc]}
+\text{if } M_{ij} = 1 & 1 & 1 & 0\bigstrut[t] \\
+\text{if } M_{ij} = 2 & 1 & 0 & 1 \\
+\text{if } M_{ij} = 3 & 1 & 1 & 1\bigstrut[b]\\
+\end{block}
+\end{blockarray}\vspace*{-1.25\baselineskip}
+\end{align*}
+
+The log likelihood for the parameter of interest \(\bm{\psi}_{jk} = \{\psi_{jk0}, \psi_{jk1}, ... , \psi_{jkL}\}\) is, for a fixed office \(j\) when considering the \(k\)th cluster:
+\begin{align}
+\mathcal{L}(\bm{\psi}_{jk}) = \sum^n_{i=1}\sum^{L}_{\ell = 0} m_{ij\ell}\zeta_{ik} \ind{Y_{ij} = \ell} \log\left(\frac{\exp(\psi_{jk\ell})}{\sum_{\ell^\prime = 0}^{L} m_{ij\ell^\prime} \exp(\psi_{jk\ell^\prime})} \right) \label{eq:mlogit_ll}
+\end{align}
+
+Then we can solve the parameters numerically, i.e.,
+\begin{align}
+\widehat{\bm{\psi}}^{\text{MLE}}_{jk} = \arg_{\bm{\psi}}\max \mathcal{L}(\bm{\psi}_{jk})
+\end{align}
+by software like \texttt{optim}. Things will converge faster if we provide a gradient. We can take the partial derivative of the log likelihood, which returns a length-($L + 1$) vector $\nabla \mathcal{L}(\bm{\psi}_{jk})$ where the $(\ell+1)$th element is derived in section \ref{sec:vcmlogit_derivation}. All this significantly reduces time by reducing the overhead introduced in off-the-shelf packages like \texttt{mlogit}
+
+
+\subsection{Evaluating Convergence with missingness}
+
+When following the EM algorithm on this data affected by uncontested choices, the observed log likelihood changes. Recall that in the no-missing case,  we have equation \ref{eq:obsloglik}. However, in cases of missingness, the contribution of a data point also depends on the contestedness class.
+
+\begin{align}
+{\mathcal{L}}^{\star}_{\text{obs}} &= \sum^{N}_{i=1}\log \left[\sum^{K}_{k=1}\pi_k \prod^{J}_{j=1}\prod_{\ell \in S_{M_{ij}}}\left\{\left(\frac{\mu_{kj\ell}}{\sum_{\ell^\prime \in S_{M_{ij}}} \mu_{kj\ell^\prime}}\right)^{\ind{Y_{ij} = \ell}}\right\}\right]
+\end{align}
+
+
+
+\section{Incorporating Covariates}
+
+There are three types of auxilarly information one can include
+\begin{enumerate}
+\item Individual covariates (e.g. geography or demographics), that vary across \(i\) but not by \(j\)
+\item Candidate covariates (e.g. like incumbency) that vary both across groups of \(i\) and appear in some \(j\) but not others
+\item Office covariates (e.g. national vs. state offices) that vary across only \(j\).
+\end{enumerate}
+
+\subsection{Individual-level covariates}
+
+Individual-level covariates affect who is in which cluster and the size of each cluster, but they will not change the dimensionality of \(\mu\). \(\bm\zeta\) is already indexed by \(i\), but \(\bpi\) is not. Suppose we have a \(N \times P_V\) numeric matrix \(\mathbf{V}\). Then we parameterize:
+
+\begin{align}\label{eq:theta_i}
+\pi_{ik} &= \frac{\exp{\bm V_{i}^\top \bm\gamma_k}}{\sum_{k^\prime = 1}^K \exp{\bm V_{i}^\top \bm\gamma_k}}
+\end{align}
+where \(\bm\gamma_k\) is a length \(P_V + 1\) vector of coefficients including one for the intercept. The general matrix \(\mathbf{\gamma}\) is a \((P_V + 1) \times (K)\) matrix where the first column is the baseline and is all zeroes.
+
+In the M-step for \(\widehat\pi\), we now must adapt eq. \ref{eq:Mstep_theta} so that it not only upweights \(\pi_k\) for which \(\zeta_k\) is high, but also systematically upweight voters whose covariates tend to correlate with high \(\zeta_k\). To do this, we regress \texttt{zeta  \(\sim\) V} i.e. zeta on Vs in \texttt{emlogit}\footnote{Yamauchi, Soichiro. emlogit: An ECM Algorithm for the Multinomial Logit Model. \url{https://github.com/soichiroy/emlogit}}). Then to get predictions \(\widehat\pi_{i}\) following the standard multinomial logit transformation as above (eq. \ref{eq:theta_i}). In the next iteration, we must use those \(\widehat\gamma\) coefficients as starting values.
+\begin{align}
+\text{for each \(i, k\), update: }~~~  \widehat{\pi}_{ik} &\leftarrow \frac{\exp{\bm V_{i}^\top \widehat\gamma_k}}{\sum_{k^\prime = 1}^K \exp{\bm V_{i}^\top \widehat\gamma_k}}
+\end{align}
+
+Even without any covariates, the dimensionality of \(\bpi\) changes. Previously two voters with the same outcome \(\bm Y\) were in the same cluster with probability 1. Now, with covariates, there is more variation. \(\bpi\) is a \(N \times K\) matrix instead of a \(K \times 1\) vector. So we must rewrite:
+\begin{align}
+\text{for each \(i, k\), update: }~~~  \widehat{\pi}_{ik} &\leftarrow \frac{1}{N}\sum^N_{i = 1}\widehat{\zeta}_{ik}
+\end{align}
+
+For the E-step, similarly, we use the matrix for each \(i, k\), and index \(\bpi\) by \(i\) as well:
+\begin{align}
+\text{for each \(i, k\), update: }~~~   \widehat\zeta_{ik} \leftarrow \frac{{\pi}_{ik}\prod^{J}_{j=1}\bm{\mu}_{kj,Y_{ij}}}
+{\sum^{K}_{k^\prime=1}{\pi}_{k^\prime}\prod^{J}_{j=1}\bm{\mu}_{k^\prime j,Y_{ij}}}
+\end{align}
+
+Because the variation of \(\pi_i\) across observations \(i \in 1, ..., N\) can get very large, when we report the size of the cluster or general mixing proportion we can provide the sample average
+\begin{align*}
+\widetilde\bpi = \left(\frac{1}{N}\sum_{i=1}^N \widehat\pi_{i1}, ...., \frac{1}{N}\sum_{i=1}^N \widehat\pi_{iK},\right)
+\end{align*}
+
+
+\newpage
+\begin{appendices}
+\appendix
+
+\begin{centering}
+\textbf{\large{Appendix}}
+\end{centering}
+
+\section{Deriving EM with complete data \label{sec:EM-deriv_nomissing}}
+
+Recall that the expectation of the likelihood from equation \ref{eq:Elik} is
+
+\begin{align*}
+\E{\mathcal{L}_{\text{comp}}} = \sum^{N}_{i=1}\sum^{J}_{j=1}\sum^{K}_{k=1}\sum^{L}_{\ell = 0}\ind{Y_{ij} = \ell} \zeta_{ik}\log\mu_{kj\ell} +
+\sum^{N}_{i=1}\sum^{K}_{k=1}\zeta_{ik}\log \pi_{k}
+\end{align*}
+so to optimize we introduce Langrange multipliers \(\lambda\) and \(\bm{\eta}\) for the constraints on \(\bpi\) and \(\bmu_{kj}\), respectively:
+\begin{align}
+\widetilde{\mathcal{L}} = \E{\mathcal{L}_\text{comp}} - \lambda\left(\sum^{K}_{k=1}\pi_k - 1\right) - \sum^{K}_{k=1}\sum^{J}_{j=1}\eta_{kj}\left(\sum^{L}_{\ell=0}\mu_{kj\ell} - 1\right)\label{eq:lagrange_a}
+\end{align}
+Then, for \(\bpi\) we have that
+\begin{align*}
+\frac{\partial}{\partial {\pi}_{k}}\widetilde{\mathcal{L}}
+&= \frac{\sum^{N}_{i=1}\zeta_{ik}}{{\pi}_{k}} - \lambda  = 0
+\end{align*}
+along with the constraint \(\sum^K_{k=1}\pi_k = 1\). Notice that when we sum the FOC for \(\bpi\) across \(k\), the first condition becomes \(\sum^K_{k=1}\pi_k = \frac{1}{\lambda}\sum^K_{k = 1}\sum^N_{i=i}\zeta_{ik}\), and because the LHS sums to 1 due to the constraint and in the RHS  \(\sum^{N}_{i=1}\sum^{K}_{k^\prime =1}\zeta_{ik^\prime}\) sums to \(N\), we have \(\lambda = N\).
+
+\medskip
+
+Separately, for \(\bmu_{kj}\) we have that
+\begin{align*}
+\frac{\partial}{\partial {\mu}_{kj\ell}}\widetilde{\mathcal{L}}
+&= \frac{\sum^{N}_{i=1}\ind{Y_{ij} = \ell}\zeta_{ik}}{\bm{\mu}_{kj\ell}} - \eta_{kj}  = 0,
+\end{align*}
+along with constraint \(\sum^L_{\ell = 0} \mu_{kj\ell} = 1\). Once we sum the FOC for \(\bmu\) across \(\ell\) the first condition becomes  \(\sum^L_{\ell=0} \mu_{kj\ell} = \frac{1}{\eta_{kj}}\sum_{i=1}\sum_{\ell=0}\ind{Y_{ij} = \ell}\zeta_{ik}\), and because the LHS again sums to 1 and in the RHS   \(\sum^{N}_{i=1}\sum^{L}_{\ell = 0}\ind{Y_{ij} = \ell}\zeta_{ik}\) sums to the prevalence of the weights \(\sum^{N}_{i=1}\zeta_{ik}\), we get \(\eta_{kj}= \sum^{N}_{i=1}\zeta_{ik}\).
+\medskip
+
+Together, the above imply that
+\begin{equation}
+\pi_{k} = \frac{1}{N}\sum^{N}_{i=1}\zeta_{ik}\quad
+\text{and}\quad
+\mu_{kj\ell} =
+\frac{\sum^{N}_{i=1}\bm{1}\{Y_{ij} = \ell\}\zeta_{ik}}{\sum^{N}_{i=1}\zeta_{ik}}
+\end{equation}
+
+
+\section{Deriving EM with censored data \label{sec:EM-deriv_censored}}
+
+The modified log likelihood is
+% \begin{align}
+% \Pr(\bY, \bZ \mid \bmu, \bpi)\nonumber &= \prod^{N}_{i=1}\prod^{J}_{j=1}\prod^{K}_{k=1}\left\{\prod^{}_{\ell\in S_{M_{ij}}}\pr{Y_{ij} = \ell | Z_i = k}^{\ind{Y_{ij} = \ell}}\right\}^{\ind{Z_i=k}} \prod^N_{i=1}\prod^K_{k=1}\pr{Z_i = {k} \mid \bpi}^{\ind{Z_i = k}}\nonumber
+% \end{align}
+\begin{align}
+\mathcal{L}_{\text{comp}}(\bmu, \bpi|\bY, \bZ) & = \sum^{N}_{i=1}\sum^{J}_{j=1}\sum^{K}_{k=1}\sum^{}_{\ell \in S_{M_{ij}}}
+\ind{Y_{ij} = \ell, Z_{i} = k}
+\log \Pr(Y_{ij} = \ell | Z_{i} = k,  M_{ij} = m, \bm{\mu})\nonumber\\
+& \qquad +
+\sum^N_{i=1}\sum^{K}_{k=1}\ind{Z_{i} = k}\log \Pr(Z_{i} = k | \bm{\pi})\nonumber
+\end{align}
+And the expected log likelihood, taking expectations over \(Z_i\) is
+\begin{align}
+\E{\mathcal{L}_{\text{comp}}} &= \sum^{N}_{i=1}\sum^{J}_{j=1}\sum^{K}_{k=1}\sum^{L}_{\ell \in M_{ij}}\ind{Y_{ij} = \ell}\zeta_{ik}\underbrace{\log \Pr(Y_{ij} = \ell | Z_{i} = k, M_{ij} = m, \bm{\mu})}_{=\log \left(\frac{\mu_{kj\ell}}{\sum_{\ell^\prime \in S_{m}} \mu_{kj\ell}}\right)}\nonumber\\
+& + \sum^{N}_{i=1}\sum^{K}_{k=1}\zeta_{ik}\log {\pi}_{k}
+\end{align}
+
+\paragraph{E-step} Then the E-step can be the normalized version of the posterior probability marginalized by the mixing proportion,
+\begin{align}
+\widehat{\zeta}_{ik} \propto \pi_k\prod^{J}_{j = 1}\underbrace{\prod^{L}_{\ell \in S_m}\left(\frac{\mu_{kj\ell}}{\sum_{\ell^\prime \in S_{m}} \mu_{kj\ell^\prime}}\right)^{\ind{Y_{ij} = \ell}}}_{\equiv \bmu_{kj, Y_{ij}, M_{ij}}}
+\end{align}
+So in the E-step, we would be updating by this probability:
+\begin{align}
+\zeta_{ik} \leftarrow \frac{{\pi}_{k}\prod^{J}_{j=1}\bm{\mu}_{kj,Y_{ij}, M_{ij}}}
+{\sum^{K}_{k^\prime=1}{\pi}_{k^\prime}\prod^{J}_{j=1}\bm{\mu}_{k^\prime j,Y_{ij}, M_{ij}}}
+\end{align}
+
+\paragraph{M-step}  The M-step involves taking the derivative of one more layer of complication. Re-using notation we introduce Langrange multipliers \(\lambda\) and \(\bm{\eta}\) for the constraints on \(\bpi\) and \(\bmu_{kj}\), respectively and modify eq. \ref{eq:lagrange_a} as:
+
+\begin{align}
+\widetilde{\mathcal{L}} = \E{\mathcal{L}_\text{comp}} - \lambda\left(\sum^{K}_{k=1}\pi_k - 1\right) - \sum^{K}_{k=1}\sum^{J}_{j=1}\eta_{kj}\left(\sum_{\ell \in S_{m}}\left(\frac{\mu_{kj\ell}}{\sum_{\ell^\prime \in S_{m}} \mu_{kj\ell^\prime}}\right) - 1\right) \nonumber
+\end{align}
+
+We can deduce from the structure of the \(\bmu\) array that the equivalent thing to the M-step in the complete data case is to run a standard multinomial logit with a IIA assumption. Unfortunately, neither the M-step nor a multinomial logit has a closed-form solution.
+
+
+\section{The gradient for varying multinomial logit }
+\label{sec:vcmlogit_derivation}
+
+Our goal is to take the partial derivative of the likelihood in eq. \ref{eq:mlogit_ll} with respect to \(\psi_{jk1}\) and \(\psi_{jk2}\):
+\begin{align}
+\mathcal{L}(\bm{\psi}_{jk}) = \sum^n_{i=1}\sum^{L}_{\ell = 0} m_{ij\ell}\zeta_{ik} \ind{Y_{ij} = \ell} \log\left(\frac{\exp(\psi_{jk\ell})}{\sum_{\ell^\prime = 0}^{L} m_{ij\ell^\prime} \exp(\psi_{jk\ell^\prime})} \right)
+\end{align}
+
+It is easier to consider the gradient at \(i\), because the rest will be the sum of the individual gradients.
+\begin{align*}
+\mathcal{L}(\bm{\psi}_{jk})_i &= \zeta_{ik}\sum^L_{\ell = 0}\left\{m_{i\ell}\ind{Y_{ij} = \ell}\log\left(\frac{\exp(\psi_{jk\ell})}{\sum^L_{\ell^\prime = 0}\exp_{\psi_{jk\ell^\prime}}}\right)\right\}\\
+\text{Let } c_i &= \sum^L_{\ell^\prime = 0}\exp_{\psi_{jk\ell^\prime}} \text{ to abbreviate}\end{align*}
+
+\begin{align*}
+\nabla\mathcal{L}({\psi}_{jk1})_i =& \zeta_{ik}\bigg\{m_{i0}\ind{Y_{ij} = 1}\frac{\partial}{\partial \psi_{jk1}} \log\left(\frac{1}{c_i}\right) + \\
+~~& m_{i1}\ind{Y_{ij} = 1}\frac{\partial}{\partial \psi_{jk1}}\log\left(\frac{\exp{\psi_{jk1}}}{c_i}\right) + m_{i2}\ind{Y_{ij} = 1}\frac{\partial}{\partial \psi_{jk1}}\log\left(\frac{\exp{\psi_{jk2}}}{c_i}\right)\bigg\}\\
+=& \zeta_{ik}\bigg\{m_{i0}\ind{Y_{ij} = 1}\left(-c_i\left(\frac{1}{c_i}\right)^2\exp{\psi_{jk1}}\right) + \\
+~~& m_{i1}\ind{Y_{ij} = 1}\left(1 - \frac{\exp(\psi_{jk1})}{c_i}\right) + m_{i2}\ind{Y_{ij} = 1}\left(- \frac{\exp{\psi_{jk1}}}{c_i}\right)\bigg\}\\
+=& \zeta_{ik}\left\{m_{i1}\ind{Y_{ij} = 1}\left(1 - \frac{\exp{\psi_{jk1}}}{c_i}\right) + \sum_{\ell^\prime \neq 1}m_{i\ell^\prime}\ind{Y_{ij} = 1}\left(\frac{\exp{\psi_{jk\ell}}}{c_i}\right)\right\}\\
+\end{align*}
+
+So generally, the $\ell + 1$th gradient is
+\begin{align*}
+\nabla\mathcal{L}({\psi}_{jk\ell}) =& \sum^{n}_{i=1}\left[\zeta_{ik}\left\{m_{i\ell}\ind{Y_{ij} = \ell}\left(1 - \frac{\exp{\psi_{jk\ell}}}{c_i}\right) + \sum_{\ell^\prime \neq \ell}m_{i\ell^\prime}\ind{Y_{ij} = \ell}\left(\frac{\exp{\psi_{jk\ell}}}{c_i}\right)\right\}\right]
+\end{align*}
+
+\end{appendices}
+\end{document}
+
+
+For \(\bmu\), we have
+
+\begin{align*}
+\frac{\partial}{\partial {\mu}_{kj\ell}}\widetilde{\mathcal{L}}
+&= \frac{\partial}{\partial {\mu}_{kj\ell}} \sum_{i=1}^{N}\ind{Y_{ij} = \ell}\zeta_{ik}\left(\log(\mu_{kj\ell}) - \log\left(\sum_{\ell^\prime \in S_m} \mu_{kj\ell^\prime}\right)\right)  -\eta_{kj}\frac{\partial}{\partial {\mu}_{kj\ell}}\left(\frac{\mu_{kj\ell}}{\sum_{\ell^\prime \in S_{m}} \mu_{kj\ell^\prime}}\right)\\
+&= \frac{\sum_{i=1}^{N}\ind{Y_{ij} = \ell}\zeta_{ik}}{\mu_{kj\ell}} - \frac{\partial}{\partial {\mu}_{kj\ell}}\left\{ \sum_{i=1}^{N}\ind{Y_{ij} = \ell}\log\left(\sum_{\ell^\prime \in S_m} \mu_{kj\ell^\prime}\right)  + \eta_{kj}\left(\frac{\mu_{kj\ell}}{\sum_{\ell^\prime \in S_{m}} \mu_{kj\ell^\prime}}\right)\right\}
+\end{align*}
+along with constraint \( \sum_{\ell \in S_m}\left(\frac{\mu_{kj\ell}}{\sum_{\ell^\prime \in S_{m}} \mu_{kj\ell^\prime}}\right) = 1\).
+
+Now, substantively we only care about the values of \(\mu_{kj\ell}\) for which \(\ell \in S_m\), so in these cases \(\sum_{\ell^\prime \in S_m} \mu_{kj\ell^\prime}  = \mu_{kj\ell} + \sum_{\ell^\prime \in S_m, \ell^\prime \neq \ell} \mu_{kj\ell^\prime}\). Therefore the derivative of is simply 1, and so
+
+\begin{align*}
+\frac{\partial}{\partial {\mu}_{kj\ell}}\widetilde{\mathcal{L}}
+ &= \left(\sum_{i=1}^{N}\ind{Y_{ij} = \ell}\zeta_{ik}\right)\left(\frac{1}{\mu_{kj\ell}} - \frac{1}{\sum_{\ell^\prime \in S_m} \mu_{kj\ell^\prime}}\right) - \eta_{kj} \frac{\partial}{\partial {\mu}_{kj\ell}}\left(\frac{\mu_{kj\ell}}{\sum_{\ell^\prime \in S_{m}} \mu_{kj\ell^\prime}}\right)
+\end{align*}
+
+
+
+
+% Suppose \(M_{ij} = m\). We decompose the likelihood in the \(L = 2\) case as
+% \begin{align*}
+% \mathcal{L}_{\text{comp}} = \sum_{i=1}\sum_{j=1}\sum_{k=1}\Bigg\{&\ind{Y_{ij} = 0}\zeta_{ik}\log\frac{1}{\sum_{\ell^\prime \in S_{m}} \exp(\psi_{kj\ell^\prime})} +\\
+% & \ind{Y_{ij} = 1}\zeta_{ik}\log\frac{\exp(\psi_{kj1})}{\sum_{\ell^\prime \in S_{m}} \exp(\psi_{kj\ell^\prime})} + \\
+% &\qquad \ind{Y_{ij} = 2}\zeta_{ik}\log\frac{\exp(\psi_{kj2})}{\sum_{\ell^\prime \in S_{m}} \exp(\psi_{kj\ell^\prime})}\Bigg\}
+% \end{align*}
+
+% Taking the derivative of this with respect to \(\psi_{kj1}\), for example, will involve a cross-product. In the \(M_{ij} = m = 3\) case, we have
+
+
+% \begin{align*}
+% \frac{\partial \mathcal{L}_\text{comp}}{\partial \psi_{kj1}}  =& \sum_{i=1}\ind{Y_{ij} = 1}\zeta_{ik}\\
+% &- \sum_{i=1}\ind{Y_{ij} = 1}\zeta_{ik}\frac{\exp(\psi_{kj1})}{\sum_{\ell^\prime \in S_{m}} \exp(\psi_{kj\ell^\prime})}\\
+% &- \sum_{i=1}\ind{Y_{ij} = 0}\zeta_{ik}\frac{\exp(\psi_{kj1})}{\sum_{\ell^\prime \in S_{m}} \exp(\psi_{kj\ell^\prime})}\\
+% &- \sum_{i=1}\ind{Y_{ij} = 2}\zeta_{ik}\frac{\exp(\psi_{kj1})}{\sum_{\ell^\prime \in S_{m}} \exp(\psi_{kj\ell^\prime})}\\
+% =& \sum_{i=1}\ind{Y_{ij} = 1}\zeta_{ik} - \sum_{i}\zeta_{ik}\frac{\exp(\psi_{kj1})}{1 + \sum_{\ell^\prime \in S_m} \exp(\psi_{kj\ell^\prime})}
+% \end{align*}
+% Because \(\frac{d}{d\psi_{kj1}} \log(1 + \exp(\psi_{kj1}) + \exp(\psi_{kj2})) = \frac{\exp(\psi_{kj1})}{\sum_{\ell^\prime \in S_{m}} \exp(\psi_{kj\ell^\prime})}.\)
+
+% When \(m = 1\), \(\ell = 2\) is not available so we need to drop that.
+
+% 2019-10-16 this version takes 32 minutes for three EM models, two using IIA. Probably each IIA model takes about 15 minutes. Estimation log likelihood also took about 14 miniutes.
+
+
+

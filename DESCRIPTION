@@ -1,0 +1,51 @@
+Package: clusterCVR
+Title: A Clustering Algorithm for Cast Vote Records
+Version: 0.0.1
+Authors@R: 
+    c(person(given = "Shiro",
+             family = "Kuriwaki",
+             role = c("aut", "cre"),
+             email = "shirokuriwaki@gmail.com",
+             comment = c(ORCID = "0000-0002-5687-2647")),
+      person(given = "Soichiro",
+             family = "Yamauchi",
+             role = c("ctb")))
+Description: Cast Vote Records (also known as ballot images) are discrete 
+ records of a voter's votes on a potentially long ballot. This package provides 
+ a clustering algorithm that categorizes complicated voting profiles into 
+ prototypical vote profiles. Unlike off the shelf algorithms, this algorithm is
+ built for multinomial outcomes with potentially large swaths of missingness. 
+ It computes a EM algorithm with a C++ backend (Rcpp) for speed.
+License: GPL (>= 2)
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.1.0
+Roxygen: list(markdown = TRUE)
+Depends:
+  Rcpp (>= 0.11.0), 
+  RcppArmadillo,
+  R (>= 2.10),
+Imports: 
+  emlogit,
+  dplyr,
+  tibble,
+  tidyr (>= 1.0.0),
+  purrr,
+  stringr,
+  glue,
+  scales,
+  foreach,
+  rlang,
+  haven,
+  ggplot2,
+LinkingTo: 
+  Rcpp, 
+  RcppArmadillo
+Suggets:
+  lemon,
+  ggthemes,
+  mlogit,
+  forcats,
+  testthat
+Remotes:
+  soichiroy/emlogit

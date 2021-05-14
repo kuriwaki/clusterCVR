@@ -1,0 +1,175 @@
+\usepackage[margin = 1.1in]{geometry}
+
+% Essential packages
+\usepackage{color, colortbl}
+\usepackage{graphicx}
+\usepackage{enumitem}
+
+% Parameters
+\usepackage{hanging}
+\usepackage{setspace}
+\usepackage{lscape}
+\usepackage{verbatim}
+\usepackage{placeins}
+\usepackage{floatpag}
+\usepackage{subcaption}
+\usepackage{pdfpages} % include pdf
+\usepackage{abstract}
+\usepackage{multicol}
+\usepackage{caption}
+\usepackage{lineno}
+
+
+% Figure caption?
+\usepackage[labelfont=bf]{caption}
+\setlength{\captionmargin}{10pt}
+
+\usepackage{changepage} % adjustwidth
+
+\usepackage{soul} % underline
+\usepackage{tcolorbox}
+
+% Minion for main text and math?
+% \usepackage{MinionPro}
+
+% Helvetica for sans serif
+% (scaled to match size of Minion)
+\usepackage[scaled=0.90]{helvet}
+
+% Bera Mono for monospaced
+% (scaled to match size of Minion)
+\usepackage[T1]{fontenc}
+\usepackage[scaled=0.75]{beramono}
+
+% footnote
+\usepackage{titling}
+ %% Footnote font size setup
+\usepackage[hang, bottom]{footmisc}
+\setlength{\footnotemargin}{1.2em} % separation between number and text
+\interfootnotelinepenalty=10000 %% Completely prevent breaking of footnotes
+
+
+% spacing
+\newcommand\spacingset[1]{\renewcommand{\baselinestretch}%
+{#1}\small\normalsize}
+
+
+% math
+\usepackage{amsmath,amssymb, amsthm, mathtools}
+\usepackage{blkarray}
+\numberwithin{equation}{section}
+\usepackage{bm}
+\usepackage{dsfont}
+\usepackage{bbding} % checkmark
+
+\newcommand{\var}{\textnormal{Var}}
+\newcommand{\cov}{\textnormal{Cov}}
+\newcommand{\cor}{\textnormal{Cor}}
+\newcommand{\pr}[1]{\mathbb{\Pr}\left(#1\right)}
+\newcommand{\E}[1]{\mathbb{E}\left[#1\right]}
+\newcommand{\ind}[1]{\bm{1}\left(#1\right)}
+
+\newcommand{\bth}{\bm{\theta}}
+\newcommand{\bmu}{\bm{\mu}}
+\newcommand{\bpi}{\bm{\pi}}
+\newcommand{\bps}{\bm{\psi}}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\y}{\textsc{y}}
+\newcommand{\x}{\textsc{x}}
+\newcommand{\bx}{\mathbf{x}}
+\newcommand{\by}{\mathbf{y}}
+\newcommand{\bz}{\mathbf{z}}
+\newcommand{\bX}{\mathbf{X}}
+\newcommand{\bY}{\mathbf{Y}}
+\newcommand{\bZ}{\mathbf{Z}}
+\newcommand{\sR}{\textsc{r}}
+\newcommand{\sL}{\textsc{l}}
+\newcommand\norm[1]{\left\lVert#1\right\rVert} % norm enviornment
+
+
+% Colored links
+\definecolor{mygray}{gray}{0.9}
+\definecolor{crimson}{RGB}{156,0,0}
+\definecolor{red}{HTML}{E31A1C}
+\definecolor{blue}{HTML}{1F78B4}
+\usepackage{hyperref}
+\hypersetup{colorlinks = true,
+            citecolor = crimson,
+            urlcolor = crimson,
+            linkcolor = crimson,
+            plainpages = false,
+            bookmarksnumbered,
+            pdfauthor = {}}
+\usepackage{url}
+
+
+
+% Titling
+% \setlength{\droptitle}{-5.2em}
+\pretitle{\begin{center}\large\bfseries}
+\posttitle{\end{center}}
+% \preauthor{\begin{flushleft}}
+% \postauthor{\end{flushleft}}
+% \predate{\begin{flushleft}\normalsize}
+% \postdate{\end{flushleft}}
+
+% Sectioning
+\usepackage{titlesec}
+\titleformat*{\section}{\normalsize\bfseries}
+\titleformat*{\subsection}{\normalsize\bfseries}
+
+% TOC
+\usepackage{tocloft}
+\usepackage[titletoc]{appendix}
+
+
+% tables
+\usepackage{tabularx}
+\usepackage{colortbl}
+\definecolor{lgray}{gray}{0.85}
+\newcolumntype{C}{>{\centering\arraybackslash}X}
+\newcolumntype{G}{>{\columncolor{lgray}}C}
+% Tabular X special row types
+\newcolumntype{R}{>{\raggedleft\arraybackslash}X}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcolumntype{m}{>{\hsize=1.40\hsize}X}
+\newcolumntype{b}{>{\hsize=2.10\hsize}X}
+\newcolumntype{s}{>{\hsize=0.20\hsize}C}
+
+\usepackage{booktabs}
+\usepackage{rotating}
+\usepackage{arydshln}
+\usepackage{bigdelim}
+\usepackage{bigstrut}
+\usepackage{array}
+\setlength{\tabcolsep}{0.5em}   % As recommended by James Felici ‘The Complete Manual of Typography’
+
+
+% some break bug
+\makeatletter
+\def\blx@maxline{77}
+\makeatother
+
+
+% Code
+\usepackage{listings}
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+
+\lstset{frame=tb,
+  language=R,
+  aboveskip=3mm,
+  belowskip=3mm,
+  showstringspaces=false,
+  columns=flexible,
+  basicstyle={\small\ttfamily},
+  numbers=none,
+  numberstyle=\tiny\color{gray},
+  keywordstyle=\color{black},
+  commentstyle=\color{dkgreen},
+  stringstyle=\color{mauve},
+  breaklines=true,
+  breakatwhitespace=true,
+  tabsize=3
+}
