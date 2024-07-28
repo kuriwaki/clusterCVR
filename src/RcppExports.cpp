@@ -6,6 +6,11 @@
 
 using namespace Rcpp;
 
+#ifdef RCPP_USE_GLOBAL_ROSTREAM
+Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
+Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
+#endif
+
 // mu_ind
 double mu_ind(double mu, int y, int l);
 RcppExport SEXP _clusterCVR_mu_ind(SEXP muSEXP, SEXP ySEXP, SEXP lSEXP) {
