@@ -187,9 +187,13 @@ clusterCVR <- function(data,
   zeta_hat = matrix(NA, nrow = data$U, ncol = user_K)
 
   pi_names = str_c("pi_", seq_len(user_K))
-  mu_names = str_c(str_c(str_c("mu_", seq_len(user_K), "_"),
-                         rep(seq_len(data$D), each = user_K), "_"),
-                   rep(0:data$L, each = user_K*data$D))
+  mu_names = str_c(
+    str_c(
+      str_c("mu_", seq_len(user_K), "_"),
+      rep(seq_len(data$D), each = user_K), "_"
+    ),
+    rep(0:data$L, each = user_K*data$D)
+  )
 
   # Loop setup
   iter = 1
