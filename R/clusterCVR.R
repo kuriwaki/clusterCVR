@@ -54,7 +54,7 @@
 #'
 #'
 #' @importFrom Rcpp evalCpp
-#' @importFrom stringr str_c
+#' @importFrom tidyr crossing
 #' @importFrom glue glue
 #' @importFrom rlang set_names
 #' @importFrom emlogit emlogit
@@ -186,14 +186,15 @@ clusterCVR <- function(data,
   mu = init_out$init_mu
   zeta_hat = matrix(NA, nrow = data$U, ncol = user_K)
 
-  pi_names = str_c("pi_", seq_len(user_K))
-  mu_names = str_c(
-    str_c(
-      str_c("mu_", seq_len(user_K), "_"),
-      rep(seq_len(data$D), each = user_K), "_"
-    ),
-    rep(0:data$L, each = user_K*data$D)
-  )
+  pi_names = as.character(glue("pi_{seq_len(user_K)}"))
+  mu_names = crossing(
+    L = 0:data$L,
+    D = seq_len(data$D),
+    K = seq_len(data$K)
+  ) |>
+    mutate(names = as.character(glue("mu_{K}_{D}_{L}"))) |>
+    pull(names)
+
 
   # Loop setup
   iter = 1
