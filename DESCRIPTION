@@ -1,6 +1,6 @@
 Package: clusterCVR
 Title: A Clustering Algorithm for Cast Vote Records
-Version: 0.0.1
+Version: 0.0.2
 Authors@R: 
     c(person(given = "Shiro",
              family = "Kuriwaki",
