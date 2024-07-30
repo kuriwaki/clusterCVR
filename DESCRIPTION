@@ -1,6 +1,6 @@
 Package: clusterCVR
 Title: A Clustering Algorithm for Cast Vote Records
-Version: 0.0.2
+Version: 0.1.0
 Authors@R: 
     c(person(given = "Shiro",
              family = "Kuriwaki",
@@ -42,8 +42,6 @@ LinkingTo:
   Rcpp, 
   RcppArmadillo
 Suggets:
-  lemon,
-  ggthemes,
   mlogit,
   forcats,
   testthat

@@ -190,7 +190,7 @@ clusterCVR <- function(data,
   mu_names = crossing(
     L = 0:data$L,
     D = seq_len(data$D),
-    K = seq_len(data$K)
+    K = seq_len(user_K)
   ) |>
     mutate(names = as.character(glue("mu_{K}_{D}_{L}"))) |>
     pull(names)
